@@ -57,6 +57,8 @@ cd PaintDefect
 2. **安装依赖**
 
 ```markdown
+python -m venv venv
+venv\Scripts\activate     # Windows
 pip install -r requirements.txt
 ```
 
@@ -108,6 +110,7 @@ python train.py
 python app.py
 ```
 本地端口:http://127.0.0.1:5000
+
 
 
 
