@@ -67,6 +67,7 @@
 确保包含 .png 图片和对应的 .txt 标注文件
 
 最终目录结构：
+```markdown
 PaintDefect/
 ├── .gitignore
 ├── dataset/
@@ -84,6 +85,7 @@ PaintDefect/
 ├── test_model.py
 ├── requirements.txt
 └── README.md
+```
 
 4. **运行训练脚本**
 
@@ -106,4 +108,5 @@ PaintDefect/
 `python app.py`
 ```
 本地端口:http://127.0.0.1:5000
+
 
