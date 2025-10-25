@@ -50,14 +50,14 @@
 1. **克隆项目**
    
 ```markdown
-`git clone https://github.com/tonewworld/PaintDefect.git`
-`cd PaintDefect`
+git clone https://github.com/tonewworld/PaintDefect.git
+cd PaintDefect
 ```
 
 2. **安装依赖**
 
 ```markdown
-`pip install -r requirements.txt`
+pip install -r requirements.txt
 ```
 
 4. **准备数据集**
@@ -90,7 +90,7 @@ PaintDefect/
 4. **运行训练脚本**
 
 ```markdown
-`python train.py`
+python train.py
 ```
 
 训练参数
@@ -105,8 +105,9 @@ PaintDefect/
 5. **启动服务**
 
 ```markdown
-`python app.py`
+python app.py
 ```
 本地端口:http://127.0.0.1:5000
+
 
 
