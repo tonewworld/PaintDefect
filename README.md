@@ -36,16 +36,6 @@
 ### 下载地址
  [点击下载漆面缺陷数据集](  https://gitcode.com/open-source-toolkit/1ce67  )
 
-### 数据集结构
-dataset/
-└── train/
-├── 0576.PNG
-├── 0576.txt
-├── 0577.PNG
-├── 0578.PNG
-├── 0578.txt
-└── ...
-
 
 ##  快速开始
 
@@ -58,7 +48,8 @@ dataset/
 ### 安装步骤
 
 1. **克隆项目**
-git clone [项目地址](https://github.com/tonewworld/PaintDefect.git)
+git clone https://github.com/tonewworld/PaintDefect.git
+
 cd PaintDefect
 
 2. **安装依赖**
@@ -69,6 +60,25 @@ pip install -r requirements.txt
 下载数据集并解压到 dataset/train/
 
 确保包含 .png 图片和对应的 .txt 标注文件
+
+最终目录结构：
+PaintDefect/
+── .gitignore # Git忽略配置
+── dataset/ # 数据集目录（不包含在Git中）
+    —— train/ #训练集
+    —— valid/
+── model/ # 模型文件目录（不包含在Git中）
+── output/ # 输出文件目录（不包含在Git中）
+── static/ # 静态文件（自动生成）
+    ── uploads/ # 上传文件目录（不包含在Git中）
+── test_images/ # 测试图片目录（不包含在Git中）
+── templates/ # HTML模板
+── app.py # Web应用主程序
+── inference.py # 推理模块
+── train.py # 模型训练
+── test_model.py # 模型测试
+── requirements.txt # 依赖包列表
+── README.md # 项目说明
 
 4. **运行训练脚本**
 python train.py
