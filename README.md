@@ -48,12 +48,12 @@
 ### 安装步骤
 
 1. **克隆项目**
-git clone https://github.com/tonewworld/PaintDefect.git
+`git clone https://github.com/tonewworld/PaintDefect.git`
 
-cd PaintDefect
+`cd PaintDefect`
 
 2. **安装依赖**
-pip install -r requirements.txt
+`pip install -r requirements.txt`
 
 3. **准备数据集**
 
@@ -63,25 +63,25 @@ pip install -r requirements.txt
 
 最终目录结构：
 PaintDefect/
-── .gitignore # Git忽略配置
-── dataset/ # 数据集目录（不包含在Git中）
-    —— train/ #训练集
-    —— valid/
-── model/ # 模型文件目录（不包含在Git中）
-── output/ # 输出文件目录（不包含在Git中）
-── static/ # 静态文件（自动生成）
-    ── uploads/ # 上传文件目录（不包含在Git中）
-── test_images/ # 测试图片目录（不包含在Git中）
-── templates/ # HTML模板
-── app.py # Web应用主程序
-── inference.py # 推理模块
-── train.py # 模型训练
-── test_model.py # 模型测试
-── requirements.txt # 依赖包列表
-── README.md # 项目说明
+─ .gitignore # Git忽略配置
+─ dataset/ # 数据集目录（不包含在Git中）
+    — train/ #训练集
+    — valid/
+─ model/ # 模型文件目录（不包含在Git中）
+─ output/ # 输出文件目录（不包含在Git中）
+─ static/ # 静态文件（自动生成）
+    ─ uploads/ # 上传文件目录（不包含在Git中）
+─ test_images/ # 测试图片目录（不包含在Git中）
+─ templates/ # HTML模板
+─ app.py # Web应用主程序
+─ inference.py # 推理模块
+─ train.py # 模型训练
+─ test_model.py # 模型测试
+─ requirements.txt # 依赖包列表
+─ README.md # 项目说明
 
 4. **运行训练脚本**
-python train.py
+`python train.py`
 
 训练参数
 图片尺寸: 512×512
@@ -94,5 +94,6 @@ python train.py
 
 5. **启动服务**
 
-python app.py
+`python app.py`
+
 本地端口:http://127.0.0.1:5000
