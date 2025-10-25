@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>漆面缺陷检测系统</title>
+    <meta charset="UTF-8">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.2em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        
+        .content {
+            padding: 40px;
+        }
+        
+        .upload-area {
+            border: 3px dashed #bdc3c7;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 30px;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+        
+        .upload-area:hover {
+            border-color: #3498db;
+            background: #ecf0f1;
+        }
+        
+        .upload-area.dragover {
+            border-color: #2ecc71;
+            background: #d5f4e6;
+        }
+        
+        .upload-icon {
+            font-size: 48px;
+            color: #7f8c8d;
+            margin-bottom: 15px;
+        }
+        
+        .upload-text {
+            margin-bottom: 20px;
+        }
+        
+        .upload-text h3 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        
+        .upload-text p {
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        
+        .file-input {
+            display: none;
+        }
+        
+        .upload-btn {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .upload-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+        
+        .upload-btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .result-area {
+            display: none;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            margin-top: 20px;
+        }
+        
+        .result-normal {
+            border-left: 5px solid #2ecc71;
+            background: #d5f4e6;
+        }
+        
+        .result-defect {
+            border-left: 5px solid #e74c3c;
+            background: #fadbd8;
+        }
+        
+        .result-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .result-icon {
+            font-size: 24px;
+            margin-right: 10px;
+        }
+        
+        .result-normal .result-icon {
+            color: #27ae60;
+        }
+        
+        .result-defect .result-icon {
+            color: #c0392b;
+        }
+        
+        .result-title {
+            font-size: 1.3em;
+            font-weight: bold;
+        }
+        
+        .result-details {
+            color: #2c3e50;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .image-preview {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎨 漆面缺陷检测系统</h1>
+            <p>上传漆面图片，智能检测是否存在缺陷</p>
+        </div>
+        
+        <div class="content">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📁</div>
+                <div class="upload-text">
+                    <h3>上传漆面图片</h3>
+                    <p>支持 PNG、JPG 格式的图片文件</p>
+                </div>
+                <input type="file" id="fileInput" class="file-input" accept="image/*">
+                <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
+                    选择图片
+                </button>
+            </div>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>正在检测中，请稍候...</p>
+            </div>
+            
+            <div class="result-area" id="resultArea">
+                <div class="result-header">
+                    <div class="result-icon">📊</div>
+                    <div class="result-title" id="resultTitle">检测结果</div>
+                </div>
+                <div class="result-details" id="resultDetails"></div>
+                <img id="imagePreview" class="image-preview" alt="预览图片">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.getElementById('uploadArea');
+        const loading = document.getElementById('loading');
+        const resultArea = document.getElementById('resultArea');
+        const resultTitle = document.getElementById('resultTitle');
+        const resultDetails = document.getElementById('resultDetails');
+        const imagePreview = document.getElementById('imagePreview');
+
+        // 拖拽功能
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                handleFileSelect();
+            }
+        });
+
+        // 文件选择处理
+        fileInput.addEventListener('change', handleFileSelect);
+
+        function handleFileSelect() {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            // 显示图片预览
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                imagePreview.src = e.target.result;
+                imagePreview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+
+            // 上传检测
+            uploadAndDetect(file);
+        }
+
+        async function uploadAndDetect(file) {
+            // 显示加载中
+            loading.style.display = 'block';
+            resultArea.style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                // 隐藏加载中
+                loading.style.display = 'none';
+
+                // 显示结果
+                if (result.error) {
+                    showResult('错误', result.error, 'defect');
+                } else {
+                    const status = result.confidence;
+                    const details = `文件名: ${result.image_name}<br>检测结果: <strong>${status}</strong>`;
+                    showResult('检测完成', details, result.prediction === 1 ? 'defect' : 'normal');
+                }
+
+            } catch (error) {
+                loading.style.display = 'none';
+                showResult('错误', '检测失败，请重试', 'defect');
+            }
+        }
+
+        function showResult(title, details, type) {
+            resultTitle.textContent = title;
+            resultDetails.innerHTML = details;
+            
+            // 设置结果样式
+            resultArea.className = 'result-area';
+            if (type === 'normal') {
+                resultArea.classList.add('result-normal');
+            } else {
+                resultArea.classList.add('result-defect');
+            }
+            
+            resultArea.style.display = 'block';
+            
+            // 滚动到结果区域
+            resultArea.scrollIntoView({ behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>
