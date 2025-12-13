@@ -1,310 +1,372 @@
-#  漆面缺陷检测系统
+# 基于机器学习的漆面缺陷检测系统
 
-##  项目简介
+本项目实现了一个基于 **Python + OpenCV + SVM** 的漆面缺陷智能检测系统，用于识别汽车 / 家电等产品漆面上的划痕、气泡、污点等表面缺陷。系统提供从 **模型训练 → 云端推理服务 → Web 前端演示 → 端云协同与性能评估** 的完整闭环。
 
-漆面缺陷检测系统是一个基于机器学习的智能检测工具，能够自动识别漆面表面的各种缺陷，如划痕、气泡、污点等。系统采用计算机视觉技术和支持向量机(SVM)算法，实现高效准确的缺陷检测。
+> 课程背景：软件体系结构 / 边缘计算 / 端云协同实验项目。
 
-###  主要特性
--  **智能检测**: 自动识别漆面缺陷
--  **快速处理**: 实时检测，响应迅速  
--  **高准确率**: 基于机器学习算法
--  **Web界面**: 友好的用户交互界面
--  **可视化结果**: 直观展示检测过程
+---
 
-##  系统架构
+## 功能概述
 
-### 技术栈
-- **后端**: Python + Flask
-- **机器学习**: OpenCV + scikit-learn
-- **前端**: HTML + CSS + JavaScript
-- **算法**: SVM (支持向量机)
+- **自动缺陷检测**：对输入图像进行预处理、特征提取并用 SVM 分类，判断是否存在漆面缺陷。
+- **轻量级特征 + SVM**：通过手工设计的低维特征（Hu 矩 + 轮廓 + 纹理统计等）实现高效分类，适合在资源有限设备上部署。
+- **Web 演示界面**：基于 Flask + HTML/JS 实现上传图片、查看预测结果与耗时的可视化页面。
+- **端云协同模式**：
+  - `full_remote`：整图上传，云端完成预处理 + 特征 + 分类。
+  - `classify_only`：端侧完成预处理和特征提取，仅上传特征向量，云端只做分类。
+  - `auto`：服务器根据历史耗时与当前 CPU/文件大小给出推荐模式（不强制切换）。
+- **性能与并发分析**：提供脚本对不同分区模式和并发度进行基准测试与可视化。
 
-### 核心模块
-- `train.py` - 模型训练脚本
-- `inference.py` - 推理检测模块
-- `app.py` - Web应用入口
-- `test_model.py` - 模型测试工具
+---
 
-##  数据集下载
+## 技术栈
 
-### 数据集信息
-- **数据来源**: [通用瑕疵集合]
-- **图片数量**: 575张训练图片
-- **图片尺寸**: 512×512像素
-- **标注格式**: YOLO格式 (.txt文件)
+- **后端 / 服务端**
+  - Python 3
+  - Flask：HTTP API & Web 服务
+  - OpenCV：图像处理与（推理侧）SVM 模型加载
+  - scikit-learn：训练阶段的 SVM 建模与评估
 
-### 下载地址
- [点击下载漆面缺陷数据集](  https://gitcode.com/open-source-toolkit/1ce67  )
+- **前端**
+  - HTML / CSS
+  - JavaScript（可扩展为使用 OpenCV.js 在浏览器端做特征提取）
 
+- **机器学习**
+  - 算法：SVM（RBF 核）
+  - 特征：Hu 不变矩、轮廓形状特征、区域占比、强度统计等
 
-##  快速开始
+---
 
-### 环境要求
-- Python 3.8+
-- OpenCV 4.5+
-- scikit-learn 1.0+
-- Flask 2.0+
+## 仓库结构
 
-### 安装步骤
+```text
+PaintDefect/
+├── app.py                     # Flask Web 服务，暴露 / 和 /predict /classify 等接口
+├── train.py                   # 模型训练脚本：预处理、特征提取、SVM 训练
+├── inference.py               # 推理引擎：加载模型并执行预测
+├── test_model.py              # 对训练好的模型进行离线测试
+├── benchmark.py               # 单接口基准测试（端到端耗时）
+├── benchmark_classify_only.py # classify_only 模式并发测试脚本
+├── benchmark_concurrent.py    # full_remote 模式并发测试脚本
+├── summarize_concurrency.py   # 并发测试结果汇总
+├── analyze_mobile_logs.py     # 移动端性能日志分析
+├── visualize_logs.py          # 性能数据可视化（图表）
+├── mobile_perf_logs.json      # 示例移动端端到端性能日志
+├── summary.json               # 性能汇总 JSON
+├── summary.csv                # 性能汇总 CSV
+├── model/                     # 训练好的 SVM 模型（如 svm_defect.xml）
+├── static/                    # 前端静态文件（JS/CSS/上传文件等）
+│   └── uploads/               # 服务端保存上传图片（运行时创建）
+├── templates/
+│   └── index.html             # Web UI：上传图片、选择模式、展示结果
+├── output/                    # 基准测试与可视化输出目录
+├── requirements.txt           # Python 依赖
+├── README.md                  # 本说明文档
+├── MIDTERM_REPORT.md          # 中期报告（课程文档）
+└── EXPERIMENT_PLAN.md         # 实验方案（课程文档）
+```
 
-1. **克隆项目**
-   
-```markdown
+> 实际数据集目录（如 `dataset/train`、`dataset/valid`）不会包含在仓库中，需要根据下文说明自行准备。
+
+---
+
+## 数据集说明
+
+- **数据来源**：通用表面瑕疵集合（适配漆面缺陷场景）
+- **样本规模**：约 575 张训练图片
+- **图像尺寸**：512 × 512 像素
+- **标注格式**：YOLO 格式（每张图片对应 `.txt` 标注文件）
+
+> 如需复现训练流程，请按自己的数据格式做适配或参考 `train.py` 中的加载逻辑。  
+> 若你有自己的工业场景数据，可将其整理为统一尺寸灰度/彩色图像，并在 `train.py` 中配置路径与标签规则。
+
+---
+
+## 安装与运行
+
+### 1. 克隆仓库
+
+```bash
 git clone https://github.com/tonewworld/PaintDefect.git
 cd PaintDefect
 ```
 
-2. **安装依赖**
+### 2. 创建并激活虚拟环境（推荐）
 
-```markdown
+```bash
 python -m venv venv
-venv\Scripts\activate     # Windows
+# Windows
+venv\Scripts\activate
+# macOS / Linux
+# source venv/bin/activate
+```
+
+### 3. 安装依赖
+
+```bash
 pip install -r requirements.txt
 ```
 
-4. **准备数据集**
+### 4. 准备数据集（用于重新训练）
 
-下载数据集并解压到 dataset/train/
+建议目录结构示例：
 
-确保包含 .png 图片和对应的 .txt 标注文件
-
-最终目录结构：
-```markdown
+```text
 PaintDefect/
-├── .gitignore
 ├── dataset/
-│ ├── train/
-│ └── valid/
-├── model/
-├── output/
-├── static/
-│ └── uploads/
-├── test_images/
-├── templates/
-├── app.py
-├── inference.py
-├── train.py
-├── test_model.py
-├── requirements.txt
-└── README.md
+│   ├── train/    # 训练集
+│   └── valid/    # 验证/测试集
+└── ...
 ```
 
-4. **运行训练脚本**
+要求：
 
-```markdown
+- `dataset/train`、`dataset/valid` 中包含 `.png` / `.jpg` 等图像文件
+- 若使用 YOLO 标注，则需保证每张图片有对应的 `.txt` 标签文件
+- 具体路径与标签读取逻辑可在 `train.py` 中调整
+
+---
+
+## 模型训练与测试
+
+### 1. 启动训练
+
+```bash
 python train.py
 ```
 
-训练参数
-图片尺寸: 512×512
+训练脚本主要步骤：
 
-特征维度: 15维
+- 遍历数据集目录，读取图像并统一缩放到 `512×512`
+- 预处理：
+  - 灰度化
+  - 自适应阈值 + Canny 边缘检测
+  - 按位或融合 + 椭圆核开运算去噪
+- 特征提取：
+  - 7 维 Hu 不变矩（对数 + 符号变换）
+  - 轮廓面积、周长、数量、面积占比等
+  - 缺陷区域占比与强度统计
+- 使用 SVM（RBF 核）训练，并输出精度、召回率、F1 值等指标
+- 保存模型到 `model/svm_defect.xml`
 
-算法: SVM with RBF kernel
+> 在给定数据集上，目前实验准确率约为 **88.4%**。
 
-数据平衡: 自动上采样
+### 2. 测试已有模型
 
-5. **启动服务**
+```bash
+python test_model.py
+```
 
-```markdown
+该脚本会加载 `model/svm_defect.xml`，对指定测试集进行预测并输出统计结果。
+
+---
+
+## 启动 Web 服务
+
+训练完成或已有模型后，可以直接启动 Web 服务：
+
+```bash
 python app.py
 ```
-本地端口:http://127.0.0.1:5000
 
-## 分区与性能测试 (A/B/C 部分实现)
+默认访问地址：
 
-本项目已扩展支持多种“计算任务分区”模式，以用于研究移动端与云端的协同：
+- 本地浏览器打开：[http://127.0.0.1:5000](http://127.0.0.1:5000)
 
-### A. 选择的计算密集 & 时延敏感应用
-漆面缺陷检测：包含图像预处理 (自适应阈值、边缘、形态学)、特征提取 (Hu 矩、轮廓、纹理、梯度) 与 SVM 分类，图像分辨率 512×512，适合测试端侧 vs 云端的延迟差异。
+功能：
 
-### B. 模块划分与性能因素
-核心阶段：
-- 预处理阶段 (preprocess)
-- 特征提取阶段 (feature)
-- 分类阶段 (predict)
+- 上传单张图片进行缺陷检测
+- 选择 `mode`（full_remote / classify_only / auto）
+- 显示预测结果与各阶段耗时（预处理 / 特征 / 预测 / 总耗时）
 
-通过接口 `/predict` 的 `timing` 字段返回各阶段耗时 (ms)。影响性能的关键因素：
-- 图像尺寸与压缩质量 (影响上传与预处理耗时)
-- 服务器 CPU 负载 (影响所有阶段执行时间)
-- 网络带宽与 RTT (影响文件上传/特征上传时延)
-- 分区模式选择 (是否在客户端计算特征或分类)
+---
 
-### 分区模式说明
-| 模式 | 描述 | 适用场景 |
-|------|------|----------|
-| full_remote | 服务端执行完整流水线 | 端侧资源有限或网络良好 |
-| classify_only | 客户端已抽取特征，仅服务端分类 | 降低上传体积，端侧具备特征提取能力 |
-| auto | 简易策略，根据 CPU 与文件大小决定（当前版本仍默认 full_remote，可扩展） | 动态调度演示 |
+## API 接口说明
 
-使用 `FormData` 发送 `mode` 参数即可指定模式。
+### 1. `/predict` – 上传图片进行预测
 
-#### 请求与响应示例
+- **方法**：`POST`
+- **Content-Type**：`multipart/form-data`
+- **参数**：
+  - `file`：图像文件
+  - `mode`（可选）：`full_remote` / `classify_only` / `auto`，默认 `full_remote`
 
-- full_remote（上传整图，执行完整流程）：
+示例：
 
-请求（multipart/form-data 发到 `/predict`）：
 ```bash
 curl -X POST http://127.0.0.1:5000/predict \
-	-F "file=@dataset/train/0576.PNG" \
-	-F "mode=full_remote"
+  -F "file=@dataset/train/sample.png" \
+  -F "mode=full_remote"
 ```
 
-响应（字段示例）：
+响应示例：
+
 ```json
 {
-	"label": "defect",               
-	"score": 0.92,                    
-	"mode": "full_remote",
-	"timing": {
-		"preprocess_ms": 25.4,
-		"feature_ms": 13.2,
-		"predict_ms": 2.3,
-		"total_ms": 41.7,               
-		"endpoint_ms": 68.9             
-	},
-	"advisory": {                      
-		"recommended_mode": "classify_only",
-		"reason": "avg_file=712345, cpu=62.3, avg_server=271.5"
-	}
+  "label": "defect",
+  "score": 0.92,
+  "mode": "full_remote",
+  "timing": {
+    "preprocess_ms": 25.4,
+    "feature_ms": 13.2,
+    "predict_ms": 2.3,
+    "total_ms": 41.7,
+    "endpoint_ms": 68.9
+  },
+  "advisory": {
+    "recommended_mode": "classify_only",
+    "reason": "avg_file=712345, cpu=62.3, avg_server=271.5"
+  }
 }
 ```
 
-- classify_only（仅上传特征，服务端分类）：
+说明：
 
-优先使用 `/classify`（application/json），也可对 `/predict` 传 `mode=classify_only` + JSON：
+- `label` / `score`：分类结果与置信度（示例字段，具体以实现为准）。
+- `timing.*_ms`：服务器端各阶段耗时（毫秒）。
+- `endpoint_ms`：整个 HTTP 请求在服务器端的端到端耗时。
+- `advisory`：当客户端传 `mode=auto` 时，服务端会给出推荐模式与原因（当前实现 **不强制切换** 执行模式）。
 
-请求（发到 `/classify`）：
+### 2. `/classify` – 上传特征向量进行分类
+
+- **方法**：`POST`
+- **Content-Type**：`application/json`
+- **请求体**：
+
+```json
+{
+  "features": [0.1, 0.2, 0.3, ..., 1.5]
+}
+```
+
+示例：
+
 ```bash
 curl -X POST http://127.0.0.1:5000/classify \
-	-H "Content-Type: application/json" \
-	-d '{"features": [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,1.1,1.2,1.3,1.4,1.5]}'
+  -H "Content-Type: application/json" \
+  -d '{"features": [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,1.1,1.2,1.3,1.4,1.5]}'
 ```
 
-响应（字段示例）：
+响应示例：
+
 ```json
 {
-	"label": "defect",
-	"score": 0.88,
-	"mode": "classify_only",
-	"timing": { "predict_ms": 2.1 }
+  "label": "defect",
+  "score": 0.88,
+  "mode": "classify_only",
+  "timing": { "predict_ms": 2.1 }
 }
 ```
 
-字段说明：
-- `label`/`score`: 分类结果与置信度（示例字段，实际以模型实现为准）。
-- `timing.preprocess_ms`/`feature_ms`/`predict_ms`/`total_ms`: 服务端阶段耗时；`endpoint_ms` 为该 HTTP 请求在服务端端点整体耗时。
-- `advisory`: 当请求 `mode=auto` 时返回建议模式与理由；当前实现不强制改写执行模式，便于客户端自行决策。
+---
 
-#### 前端行为与常见问题
+## 分区模式与端云协同
 
-- classify_only 的前端行为：浏览器端使用 OpenCV.js 提取特征，仅将特征向量（JSON）POST 到 `/classify`，不会上传整图。
-- auto 的前端行为：仍将整图上传到 `/predict`，由服务端返回 `advisory.recommended_mode`，前端可据此切换模式。
-- 常见错误“需要提供 features 数组”：通常是页面使用了旧版本脚本（PWA 缓存/浏览器缓存）、或 OpenCV.js 未加载成功，导致前端仍把图片发到 `/predict`。
-	- 处理步骤：
-		- 强制刷新页面或清除站点数据/Service Worker 缓存后重试；
-		- 确认网络面板中看到 `POST /classify` 且请求体包含 `features` 字段；
-		- 若提示 OpenCV.js 未加载，请等待脚本加载或检查网络。
+系统支持三种主要模式，用于研究“端侧 vs 云端”计算分工：
 
-### C. 动态运行时决策
-当前 `auto` 策略：采样服务器 CPU 利用率与请求体大小，可扩展为：
-1. 引入网络测速 (客户端定期 ping)
-2. 服务端排队长度 (请求并发数)
-3. 历史耗时回归模型，动态阈值调整
+| 模式          | 描述                               | 适用场景                               |
+| ------------- | ---------------------------------- | -------------------------------------- |
+| `full_remote` | 整图上传，云端执行完整流水线       | 端侧算力有限或网络较好                 |
+| `classify_only` | 端侧完成预处理与特征提取，仅上传特征 | 希望减少上传体积、端侧具备一定算力     |
+| `auto`        | 服务端根据 CPU/文件大小/历史耗时给出推荐 | 用于演示简单的动态卸载策略与自适应能力 |
 
-可在后续版本中将特征提取的 OpenCV 实现迁移到 WebAssembly / 移动原生模块，真实实现 classify_only 模式。
+当前版本中：
 
-### 前端支持
-`templates/index.html` 增加“分区模式选择”下拉框与时间分解展示。
+- `classify_only` 已在服务端实现 `/classify` 接口与并发测试脚本，但端侧真实特征提取逻辑需要在移动端或 Web 前端配合开发。
+- `auto` 仅返回建议（`advisory.recommended_mode`），不会强制修改当前请求的执行模式，方便前端渐进接入。
 
-### 基准测试脚本
-使用 `benchmark.py` 批量发送图片并统计不同模式的端到端时延：
+---
+
+## 性能与并发测试
+
+### 1. 基本基准测试
 
 ```bash
-python benchmark.py --server http://127.0.0.1:5000 --images dataset/train --modes full_remote auto --repeat 3 --limit 5
+python benchmark.py \
+  --server http://127.0.0.1:5000 \
+  --images dataset/train \
+  --modes full_remote auto \
+  --repeat 3 \
+  --limit 5
 ```
 
-输出示例：
+输出示例（JSON）：
+
 ```json
 {
-	"full_remote": {"count": 15, "avg_ms": 210.4, "median_ms": 205.8, "min_ms": 180.2, "max_ms": 260.9},
-	"auto": {"count": 15, "avg_ms": 212.7, "median_ms": 207.3, "min_ms": 181.5, "max_ms": 265.1}
+  "full_remote": {"count": 15, "avg_ms": 210.4, "median_ms": 205.8, "min_ms": 180.2, "max_ms": 260.9},
+  "auto":        {"count": 15, "avg_ms": 212.7, "median_ms": 207.3, "min_ms": 181.5, "max_ms": 265.1}
 }
 ```
 
-### 数据记录建议
-将脚本输出重定向保存：
+### 2. 并发压测与模式对比
+
+- `full_remote` 模式并发压测：
+
 ```bash
-python benchmark.py --server http://127.0.0.1:5000 --images dataset/train --modes full_remote auto --repeat 5 > output/bench_full_auto.json
+python benchmark_concurrent.py \
+  --server http://127.0.0.1:5000 \
+  --images dataset/train \
+  --concurrency 1 5 10 \
+  --duration 30 \
+  --mode full_remote \
+  --out full_remote_conc.json
 ```
 
-### 扩展方向
-- 更精细的自动策略 (强化学习/多臂赌博)
-- 端侧特征提取 WebAssembly 化
-- 上传增量差异 (delta) 而非全图
-- 模型升级为深度学习轻量模型 (MobileNet) 并再评估分区策略
+- `classify_only` 模式并发压测（先本地提取特征，再 POST `/classify`）：
 
-## 接口速览
-| 路径 | 方法 | 说明 |
-|------|------|------|
-| /predict | POST | 上传图片+mode，返回预测与时间分解 |
-| /classify | POST | 仅提交特征数组进行分类 |
-
-`/classify` 示例：
 ```bash
-curl -X POST http://127.0.0.1:5000/classify -H "Content-Type: application/json" -d '{"features": [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,1.1,1.2,1.3,1.4,1.5]}'
+python benchmark_classify_only.py \
+  --server http://127.0.0.1:5000 \
+  --images dataset/train \
+  --concurrency 1 5 10 \
+  --duration 30 \
+  --limit 50 \
+  --out classify_only_conc.json
 ```
 
-## 并发与模式对比
+- 汇总并可视化：
 
-- 全流程并发压测：
 ```bash
-python benchmark_concurrent.py --server http://127.0.0.1:5000 --images dataset/train --concurrency 1 5 10 --duration 30 --mode full_remote --out full_remote_conc.json
+python summarize_concurrency.py \
+  --files full_remote_conc.json classify_only_conc.json \
+  --outdir output/conc
 ```
 
-- classify_only 并发压测（先本地抽取特征，再 POST /classify）：
-```bash
-python benchmark_classify_only.py --server http://127.0.0.1:5000 --images dataset/train --concurrency 1 5 10 --duration 30 --limit 50 --out classify_only_conc.json
-```
+将生成：
 
-- 汇总并生成图表：
-```bash
-python summarize_concurrency.py --files full_remote_conc.json classify_only_conc.json --outdir output/conc
-```
-生成：`output/conc/conc_summary.csv`、`rps_vs_concurrency.png`、`p90_vs_concurrency.png`。
+- `output/conc/conc_summary.csv`
+- `output/conc/rps_vs_concurrency.png`
+- `output/conc/p90_vs_concurrency.png`
 
+---
 
-### 可视化
+## 移动端端到端性能分析
 
-并发对比图表（已由脚本生成）：
+仓库中包含：
 
-![RPS vs Concurrency](output/conc/rps_vs_concurrency.png)
+- `mobile_perf_logs.json`：移动端（浏览器 / App）采集的端到端日志
+- `analyze_mobile_logs.py`、`visualize_logs.py`：用于生成端到端时延与时间分解图
 
-![P90 Latency vs Concurrency](output/conc/p90_vs_concurrency.png)
+示意结论：
 
-> 数据表见 `output/conc/conc_summary.csv`。
+- `full_remote`：上传耗时占比较高，对网络带宽与 RTT 较敏感。
+- `classify_only`：本地特征提取略增加端侧 CPU 开销，但显著减少上传体积和总体时延。
+- 可进一步通过调整图像压缩质量、分辨率与批处理策略优化端到端体验。
 
-### 结论小结
+---
 
-- classify_only 明显优于 full_remote（c=1、c=5）：RPS 提升约 3–7×，P90 时延降低至 20–30ms 区间。
-- c=10 时 classify_only 出现失败激增，推测为服务端/客户端过载或请求队列限制所致；建议将客户端并发≤5，或提升后端线程/队列与超时配置。
-- full_remote 随并发增大受上传与服务端计算影响，P90 在 c=10 明显上升（>250ms）。
-- 实践建议：在当前网络与服务器配置下，优先选择 classify_only（并发≤5）；结合 `/decision` 接口做动态切换与回退。
+## 后续扩展方向
 
-## 移动端端到端性能
+- **模型升级**：引入轻量级 CNN（如 MobileNet / ShuffleNet）进行对比实验，替换或补充现有手工特征 + SVM。
+- **更智能的分区策略**：基于历史日志训练简单回归 / 强化学习模型，动态选择 full_remote / classify_only。
+- **端侧实现强化**：
+  - 使用 OpenCV.js / WebAssembly 在浏览器端实现特征提取。
+  - 在移动端原生 App 中集成本地预处理与特征计算模块。
+- **上传优化**：尝试只上传增量特征、压缩后的特征或多帧聚合等方式，进一步降低带宽占用。
 
-基于手机网页端采集的端到端日志可视化如下（由 `analyze_mobile_logs.py` 与 `visualize_logs.py` 生成）：
+---
 
-![Mobile End-to-End Latency](output/figs/bar_end_to_end.png)
+## 许可证
 
-![Mobile Time Breakdown](output/figs/stacked_time_breakdown.png)
-
-结论要点：
-- full_remote 下，上传耗时占比较高，网络状况对端到端影响显著。
-- classify_only 下，客户端特征提取增加少量本地开销，但显著减少上传体积与总体时延。
-- 可通过调节前端压缩质量、分辨率与批处理策略进一步优化端到端时延。
-
-
-
-
-
+本项目主要用于学习与研究目的。若需在生产环境中使用或二次开发，请根据实际情况选择合适的开源许可证并补充到仓库中。
