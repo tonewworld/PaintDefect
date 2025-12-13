@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import os
 import glob
+import time
 
 class PaintDefectDetector:
     def __init__(self, model_path="model/svm_defect.xml", img_size=(512, 512)):
@@ -97,22 +98,43 @@ class PaintDefectDetector:
         
         return np.array(features)
     
-    def predict_single(self, img_path):
-        """预测单张图片"""
+    def predict_single(self, img_path, with_timing=False):
+        """预测单张图片，可选返回时间分解"""
+        t0 = time.perf_counter()
         gray, mask = self.enhanced_preprocess(img_path)
         if gray is None:
             return {'error': '无法读取图片'}
-        
+        t1 = time.perf_counter()
+
         features = self.extract_robust_features(gray, mask)
+        t2 = time.perf_counter()
         features = features.reshape(1, -1).astype(np.float32)
-        
         _, result = self.model.predict(features)
         prediction = int(result[0, 0])
-        
-        return {
+        t3 = time.perf_counter()
+
+        resp = {
             'prediction': prediction,
             'confidence': '缺陷' if prediction == 1 else '正常',
             'image_name': os.path.basename(img_path)
+        }
+        if with_timing:
+            resp['timing'] = {
+                'preprocess_ms': (t1 - t0) * 1000,
+                'feature_ms': (t2 - t1) * 1000,
+                'predict_ms': (t3 - t2) * 1000,
+                'total_ms': (t3 - t0) * 1000
+            }
+        return resp
+
+    def classify_features(self, features_array):
+        """仅对由客户端/其他节点提取的特征进行分类。features_array: list/np.array"""
+        feats = np.array(features_array, dtype=np.float32).reshape(1, -1)
+        _, result = self.model.predict(feats)
+        prediction = int(result[0, 0])
+        return {
+            'prediction': prediction,
+            'confidence': '缺陷' if prediction == 1 else '正常'
         }
     
     def predict_batch(self, image_dir):
@@ -130,5 +152,5 @@ if __name__ == "__main__":
     detector = PaintDefectDetector("model/svm_defect.xml")
     
     # 单张图片预测
-    result = detector.predict_single("test_image.png")
+    result = detector.predict_single("test_image.png", with_timing=True)
     print(f"检测结果: {result}")

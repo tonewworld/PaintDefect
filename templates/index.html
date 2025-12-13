@@ -3,6 +3,8 @@
 <head>
     <title>漆面缺陷检测系统</title>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+    <link rel="manifest" href="/static/manifest.json">
     <style>
         * {
             margin: 0;
@@ -205,9 +207,29 @@
                     <p>支持 PNG、JPG 格式的图片文件</p>
                 </div>
                 <input type="file" id="fileInput" class="file-input" accept="image/*">
-                <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
-                    选择图片
-                </button>
+                <div style="margin-top:15px; display:flex; flex-wrap:wrap; gap:10px;">
+                    <button class="upload-btn" onclick="document.getElementById('fileInput').click()">选择/拍照</button>
+                    <button class="upload-btn" id="openCameraBtn">打开摄像头</button>
+                    <button class="upload-btn" id="captureBtn" disabled>捕获帧</button>
+                    <button class="upload-btn" id="exportLogsBtn" disabled>导出日志</button>
+                </div>
+                <div style="margin-top:20px; text-align:left;">
+                    <label style="font-weight:bold; color:#2c3e50;">分区模式选择：</label>
+                    <select id="modeSelect" style="padding:8px 12px; border-radius:8px; border:1px solid #ccc;">
+                        <option value="full_remote">全流程服务器 (full_remote)</option>
+                        <option value="classify_only">客户端提特征，仅上传特征 (classify_only)</option>
+                        <option value="auto">自动决策 (auto)</option>
+                    </select>
+                </div>
+                <div style="margin-top:15px; text-align:left;">
+                    <label style="font-weight:bold; color:#2c3e50;">客户端压缩：</label>
+                    <select id="resizeSelect" style="padding:8px 12px; border-radius:8px; border:1px solid #ccc;">
+                        <option value="none">原始尺寸</option>
+                        <option value="1024">压缩到 1024px 宽</option>
+                        <option value="512">压缩到 512px 宽</option>
+                        <option value="256">压缩到 256px 宽</option>
+                    </select>
+                </div>
             </div>
             
             <div class="loading" id="loading">
@@ -226,6 +248,7 @@
         </div>
     </div>
 
+    <script src="https://docs.opencv.org/4.x/opencv.js" async></script>
     <script>
         const fileInput = document.getElementById('fileInput');
         const uploadArea = document.getElementById('uploadArea');
@@ -234,6 +257,115 @@
         const resultTitle = document.getElementById('resultTitle');
         const resultDetails = document.getElementById('resultDetails');
         const imagePreview = document.getElementById('imagePreview');
+        const openCameraBtn = document.getElementById('openCameraBtn');
+        const captureBtn = document.getElementById('captureBtn');
+        const exportLogsBtn = document.getElementById('exportLogsBtn');
+        const resizeSelect = document.getElementById('resizeSelect');
+        const localFeatureBtn = document.createElement('button');
+        localFeatureBtn.textContent = '本地特征分类';
+        localFeatureBtn.className = 'upload-btn';
+        localFeatureBtn.style.marginTop = '10px';
+        localFeatureBtn.disabled = true;
+        uploadArea.appendChild(localFeatureBtn);
+        // 检测 OpenCV.js 是否加载
+        function isCvReady(){ return typeof cv !== 'undefined' && cv && cv.Mat; }
+
+        // 当脚本加载完成后启用本地特征按钮
+        document.addEventListener('readystatechange', ()=>{
+            if(isCvReady()) localFeatureBtn.disabled = false;
+        });
+        setTimeout(()=>{ if(isCvReady()) localFeatureBtn.disabled=false; }, 3000);
+
+        async function extractFeaturesFromBlob(blob){
+            if(!isCvReady()) throw new Error('OpenCV.js 未加载');
+            const imgURL = URL.createObjectURL(blob);
+            const img = new Image();
+            await new Promise(res=>{ img.onload=res; img.onerror=()=>res(); img.src=imgURL; });
+            if(!img.width) throw new Error('图片加载失败');
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width; canvas.height = img.height;
+            canvas.getContext('2d').drawImage(img,0,0);
+            let mat = cv.imread(canvas); // BGR
+            const targetSize = 512;
+            let resized = new cv.Mat();
+            cv.resize(mat, resized, new cv.Size(targetSize, targetSize));
+            let gray = new cv.Mat(); cv.cvtColor(resized, gray, cv.COLOR_BGR2GRAY);
+            // adaptive threshold
+            let binary = new cv.Mat();
+            cv.adaptiveThreshold(gray, binary, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, 15, 8);
+            // edges
+            let edges = new cv.Mat(); cv.Canny(gray, edges, 50, 150);
+            let combined = new cv.Mat(); cv.bitwise_or(binary, edges, combined);
+            let kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3,3));
+            let cleaned = new cv.Mat();
+            cv.morphologyEx(combined, cleaned, cv.MORPH_OPEN, kernel);
+            // Hu moments (OpenCV.js 需要输出 Mat 作为第二个参数)
+            const moments = cv.moments(cleaned, true);
+            let hu = new cv.Mat();
+            cv.HuMoments(moments, hu);
+            let features = [];
+            for(let i=0;i<7;i++){
+                const h = hu.doubleAt(i,0);
+                features.push(h!==0 ? -Math.sign(h)*Math.log10(Math.abs(h)) : 0);
+            }
+            // contours
+            let cnts = new cv.MatVector(); let hierarchy = new cv.Mat();
+            cv.findContours(cleaned, cnts, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+            let contourData=[];
+            for(let i=0;i<cnts.size();i++){
+                const c = cnts.get(i); const area=cv.contourArea(c);
+                if(area>=10){ contourData.push({area, perimeter: cv.arcLength(c,true)}); }
+                c.delete();
+            }
+            contourData.sort((a,b)=>b.area-a.area);
+            const top=contourData.slice(0,3);
+            if(top.length){
+                const totalArea=top.reduce((s,x)=>s+x.area,0);
+                const maxArea=top[0].area;
+                const totalPer=top.reduce((s,x)=>s+x.perimeter,0);
+                const count=top.length;
+                features.push(totalArea*1e-4);
+                features.push(maxArea*1e-4);
+                features.push(totalArea/(targetSize*targetSize));
+                features.push(count);
+                features.push(totalPer*1e-2);
+            } else { features.push(0,0,0,0,0); }
+            // defect ratio
+            const nonZero = cv.countNonZero(cleaned);
+            features.push(nonZero/(cleaned.rows*cleaned.cols));
+            // mean/std of mask
+            let mean = new cv.Mat(); let stddev = new cv.Mat();
+            cv.meanStdDev(cleaned, mean, stddev);
+            features.push(mean.doubleAt(0,0)/255.0);
+            features.push(stddev.doubleAt(0,0)/255.0);
+            // gradient magnitude mean (approx)
+            let sobelx = new cv.Mat(); let sobely = new cv.Mat();
+            cv.Sobel(gray, sobelx, cv.CV_64F, 1,0,3);
+            cv.Sobel(gray, sobely, cv.CV_64F, 0,1,3);
+            let gradSum=0; const pixCount=gray.rows*gray.cols;
+            for(let r=0;r<gray.rows;r++){
+                for(let c=0;c<gray.cols;c++){
+                    const gx = sobelx.doubleAt(r,c); const gy = sobely.doubleAt(r,c);
+                    gradSum += Math.sqrt(gx*gx+gy*gy);
+                }
+            }
+            features.push((gradSum/pixCount)*1e-3);
+            // cleanup
+            [mat,resized,gray,binary,edges,combined,kernel,cleaned,hu,cnts,hierarchy,mean,stddev,sobelx,sobely].forEach(m=>{ try{ m.delete(); }catch(e){} });
+            URL.revokeObjectURL(imgURL);
+            return features;
+        }
+
+        // 性能日志数组
+        const perfLogs = [];
+        let mediaStream = null;
+        let videoEl = null;
+        let tCaptureStart = 0;
+
+        // 注册 Service Worker (PWA)
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/service-worker.js').catch(()=>{});
+        }
 
         // 拖拽功能
         uploadArea.addEventListener('dragover', (e) => {
@@ -260,6 +392,7 @@
         function handleFileSelect() {
             const file = fileInput.files[0];
             if (!file) return;
+            tCaptureStart = performance.now();
 
             // 显示图片预览
             const reader = new FileReader();
@@ -273,31 +406,172 @@
             uploadAndDetect(file);
         }
 
+        // 打开摄像头
+        openCameraBtn.addEventListener('click', async () => {
+            if (mediaStream) return; // 已打开
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+                videoEl = document.createElement('video');
+                videoEl.autoplay = true;
+                videoEl.playsInline = true;
+                videoEl.style.width = '100%';
+                videoEl.style.borderRadius = '8px';
+                videoEl.srcObject = mediaStream;
+                uploadArea.appendChild(videoEl);
+                captureBtn.disabled = false;
+            } catch (e) {
+                alert('摄像头开启失败: ' + e.message);
+            }
+        });
+
+        // 捕获当前帧
+        captureBtn.addEventListener('click', () => {
+            if (!videoEl) return;
+            const canvas = document.createElement('canvas');
+            canvas.width = videoEl.videoWidth;
+            canvas.height = videoEl.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(videoEl, 0, 0);
+            canvas.toBlob(blob => {
+                if (!blob) return;
+                const file = new File([blob], 'camera_capture.jpg', { type: 'image/jpeg' });
+                tCaptureStart = performance.now();
+                imagePreview.src = URL.createObjectURL(blob);
+                imagePreview.style.display = 'block';
+                uploadAndDetect(file);
+            }, 'image/jpeg', 0.9);
+        });
+
         async function uploadAndDetect(file) {
             // 显示加载中
             loading.style.display = 'block';
             resultArea.style.display = 'none';
+            let originalSize = file.size;
+            let processedFile = file;
+            let compressMs = 0;
+            const selectedMode = document.getElementById('modeSelect').value;
+            const resizeTarget = resizeSelect.value;
+            if (resizeTarget !== 'none') {
+                const startCompress = performance.now();
+                // 通过 canvas 重采样
+                const imgBitmap = await createImageBitmap(file);
+                const scale = parseInt(resizeTarget) / imgBitmap.width;
+                const targetW = parseInt(resizeTarget);
+                const targetH = Math.round(imgBitmap.height * scale);
+                const canvas = document.createElement('canvas');
+                canvas.width = targetW;
+                canvas.height = targetH;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(imgBitmap, 0, 0, targetW, targetH);
+                processedFile = await new Promise(res => {
+                    canvas.toBlob(b => res(new File([b], file.name.replace(/\.[^.]+$/, '') + `_r${resizeTarget}.jpg`, { type: 'image/jpeg' })), 'image/jpeg', 0.85);
+                });
+                compressMs = performance.now() - startCompress;
+            }
 
-            const formData = new FormData();
-            formData.append('file', file);
+            const clientMeta = {
+                original_size: originalSize,
+                uploaded_size: processedFile.size,
+                resize_target: resizeTarget,
+                compress_ms: compressMs
+            };
 
             try {
-                const response = await fetch('/predict', {
-                    method: 'POST',
-                    body: formData
-                });
+                let result = {};
+                let netStart = performance.now();
+                let netEnd = netStart;
+                if (selectedMode === 'classify_only') {
+                    if (!isCvReady()) { throw new Error('OpenCV.js 尚未加载，无法提取特征'); }
+                    const tFeatStart = performance.now();
+                    const feats = await extractFeaturesFromBlob(processedFile);
+                    const tFeatEnd = performance.now();
+                    netStart = performance.now();
+                    const resp = await fetch('/classify', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ features: feats })
+                    });
+                    netEnd = performance.now();
+                    result = await resp.json();
+                    result.mode = 'classify_only';
+                    result.timing = Object.assign({}, result.timing || {}, { feature_ms_client: (tFeatEnd - tFeatStart) });
+                } else {
+                    const formData = new FormData();
+                    formData.append('file', processedFile);
+                    formData.append('mode', selectedMode);
+                    netStart = performance.now();
+                    const response = await fetch('/predict', { method: 'POST', body: formData });
+                    netEnd = performance.now();
+                    result = await response.json();
+                }
+                const tNow = performance.now();
+                const clientTiming = {
+                    capture_ms: tCaptureStart ? (netStart - tCaptureStart) : null,
+                    network_ms: netEnd - netStart,
+                    response_parse_ms: tNow - netEnd,
+                    total_client_ms: tCaptureStart ? (tNow - tCaptureStart) : (tNow - netStart)
+                };
 
-                const result = await response.json();
+                // 网络信息
+                let netInfo = {};
+                if (navigator.connection) {
+                    const c = navigator.connection;
+                    netInfo = {
+                        effectiveType: c.effectiveType,
+                        downlink: c.downlink,
+                        rtt: c.rtt
+                    };
+                }
+
+                // 组合日志
+                const logEntry = {
+                    timestamp: new Date().toISOString(),
+                    mode: result.mode || document.getElementById('modeSelect').value,
+                    client_meta: clientMeta,
+                    client_timing: clientTiming,
+                    server_timing: result.timing || {},
+                    network_info: netInfo,
+                    prediction: result.prediction,
+                    confidence: result.confidence,
+                    image_name: result.image_name || file.name
+                };
+                perfLogs.push(logEntry);
+                exportLogsBtn.disabled = perfLogs.length === 0;
 
                 // 隐藏加载中
                 loading.style.display = 'none';
 
                 // 显示结果
                 if (result.error) {
-                    showResult('错误', result.error, 'defect');
+                    showResult('错误', `${result.error}<br>模式: ${result.mode||''}`, 'defect');
                 } else {
                     const status = result.confidence;
-                    const details = `文件名: ${result.image_name}<br>检测结果: <strong>${status}</strong>`;
+                    const st = result.timing || {};
+                    const ct = logEntry.client_timing;
+                    let timingHtml = `<br><br><strong>客户端耗时 (ms)</strong><br>` +
+                        `捕获→发送前: ${ct.capture_ms?.toFixed(2) || '-'}<br>` +
+                        `网络往返: ${ct.network_ms.toFixed(2)}<br>` +
+                        `解析响应: ${ct.response_parse_ms.toFixed(2)}<br>` +
+                        `客户端总: ${ct.total_client_ms.toFixed(2)}<br>` +
+                        `<strong>压缩耗时:</strong> ${clientMeta.compress_ms.toFixed(2)}<br>` +
+                        `<br><strong>服务器耗时 (ms)</strong><br>` +
+                        `预处理: ${st.preprocess_ms?.toFixed(2) || '-'}<br>` +
+                        `特征: ${st.feature_ms?.toFixed(2) || '-'}<br>` +
+                        `预测: ${st.predict_ms?.toFixed(2) || '-'}<br>` +
+                        (st.feature_ms_client ? `客户端特征: ${st.feature_ms_client.toFixed(2)}<br>` : '') +
+                        `总计: ${st.total_ms?.toFixed(2) || st.predict_ms?.toFixed(2) || '-'}<br>` +
+                        (st.endpoint_ms ? `端点总: ${st.endpoint_ms.toFixed(2)}<br>` : '') +
+                        `<br><strong>网络信息</strong><br>` +
+                        `类型: ${logEntry.network_info.effectiveType || '-'}<br>` +
+                        `下行: ${logEntry.network_info.downlink || '-'} Mbps<br>` +
+                        `RTT: ${logEntry.network_info.rtt || '-'} ms<br>` +
+                        `<br><strong>文件大小</strong><br>` +
+                        `原始: ${(clientMeta.original_size/1024).toFixed(1)} KB<br>` +
+                        `上传: ${(clientMeta.uploaded_size/1024).toFixed(1)} KB<br>` +
+                        `压缩目标: ${clientMeta.resize_target}`;
+                    const details = `文件名: ${result.image_name||'-'}<br>` +
+                        `检测结果: <strong>${status}</strong><br>` +
+                        `模式: ${result.mode||'full_remote'}` + timingHtml;
                     showResult('检测完成', details, result.prediction === 1 ? 'defect' : 'normal');
                 }
 
@@ -306,6 +580,47 @@
                 showResult('错误', '检测失败，请重试', 'defect');
             }
         }
+
+        // 本地特征分类流程
+        localFeatureBtn.addEventListener('click', async ()=>{
+            if(!fileInput.files[0]){ alert('请先选择或捕获图片'); return; }
+            if(!isCvReady()){ alert('OpenCV.js 尚未加载'); return; }
+            const rawFile = fileInput.files[0];
+            loading.style.display='block'; resultArea.style.display='none';
+            const tStart = performance.now();
+            try{
+                const feats = await extractFeaturesFromBlob(rawFile);
+                const tEnd = performance.now();
+                const response = await fetch('/classify', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({features: feats})
+                });
+                const payload = await response.json();
+                loading.style.display='none';
+                const status = payload.confidence || (payload.error?'错误':'未知');
+                const st = payload.timing || {};
+                const details = `本地特征维度: ${feats.length}<br>` +
+                    `本地特征提取: ${(tEnd - tStart).toFixed(2)} ms<br>` +
+                    `服务器分类: ${st.predict_ms?.toFixed(2) || '-'} ms<br>` +
+                    `总计(端侧+分类): ${(tEnd - tStart + (st.predict_ms||0)).toFixed(2)} ms<br>` +
+                    (payload.error?`错误: ${payload.error}`:`结果: <strong>${status}</strong>`);
+                showResult('本地特征分类完成', details, payload.prediction===1?'defect':'normal');
+            }catch(e){
+                loading.style.display='none';
+                showResult('错误', '本地特征分类失败: '+e.message, 'defect');
+            }
+        });
+
+        // 导出日志
+        exportLogsBtn.addEventListener('click', () => {
+            if (!perfLogs.length) return;
+            const blob = new Blob([JSON.stringify(perfLogs, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'mobile_perf_logs.json';
+            a.click();
+        });
 
         function showResult(title, details, type) {
             resultTitle.textContent = title;

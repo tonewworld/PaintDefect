@@ -1,0 +1,5 @@
+classes=1
+train=F:/DeeplearningTools/darknet_train_tool/example/defect/output/gen_train.txt
+valid=F:/DeeplearningTools/darknet_train_tool/example/defect/output/gen_valid.txt
+names=F:/DeeplearningTools/darknet_train_tool/example/defect/class.names
+backup=F:/DeeplearningTools/darknet_train_tool/example/defect/model
